@@ -1,0 +1,22 @@
+{
+  "name": "chessfly",
+  "version": "1.0.0",
+  "description": "A fruit fly's mushroom body, wired from the real FlyWire connectome, learns chess from nothing by playing itself. 2D and 3D, in the browser.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "Ruben Nugmanov (znatgost)",
+  "scripts": {
+    "test": "node test/perft.mjs --quick && node test/brain.mjs && node test/learning.mjs",
+    "perft": "node test/perft.mjs",
+    "learning": "node test/learning.mjs",
+    "train": "node tools/train.mjs",
+    "calibrate": "node tools/calibrate.mjs",
+    "build-data": "bash tools/fetch_sources.sh && python3 tools/build_mushroom_body.py",
+    "build-three": "npm i --no-save esbuild three@0.186.1 && bash tools/build_three.sh",
+    "serve": "python3 -m http.server 8000"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

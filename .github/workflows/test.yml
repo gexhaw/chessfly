@@ -1,0 +1,18 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Move generator (perft)
+        run: node test/perft.mjs
+      - name: Mushroom body model (real, shuffled and random wiring)
+        run: node test/brain.mjs
+      - name: An egg with real FlyWire wiring learns chess from scratch (1,000 self-play games)
+        run: node test/learning.mjs 1000 flywire
+      - name: The same with random wiring
+        run: node test/learning.mjs 1000 random

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChessFly — a fruit fly learns chess</title>
+  <meta name="description" content="A fruit fly's mushroom body with its real FlyWire wiring learns chess from nothing by self-play, in your browser, in 2D or 3D. Play it, watch two flies play, or raise your own.">
+  <link rel="icon" href="docs/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="docs/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="docs/apple-touch-icon.png">
+  <meta name="theme-color" content="#21322e">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="ChessFly: a fruit fly teaches itself chess">
+  <meta property="og:description" content="A fruit fly's mushroom body, wired from the real FlyWire connectome, learns chess from nothing by playing itself. Play it in 2D or 3D in the browser.">
+  <meta property="og:url" content="https://znatgost.github.io/chessfly/">
+  <meta property="og:image" content="https://znatgost.github.io/chessfly/docs/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@znatgost">
+  <link rel="stylesheet" href="src/fonts/fonts.css">
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="wordmark" href="./" aria-label="ChessFly home">
+      <svg viewBox="-34 -40 68 80" aria-hidden="true"><g id="logo-fly"></g></svg>
+      <span>ChessFly</span>
+    </a>
+    <p class="tagline">A fruit fly's mushroom body, wired exactly as in the FlyWire connectome, learns chess from nothing by playing itself.</p>
+    <div class="seg view" id="view" aria-label="Board view">
+      <button data-v="2d" aria-pressed="true">2D</button>
+      <button data-v="3d" aria-pressed="false">3D</button>
+    </div>
+    <a class="gh" href="https://github.com/znatgost/chessfly">Source on GitHub</a>
+  </header>
+
+  <main class="layout">
+    <section class="stage" aria-label="Board">
+      <div class="seat seat-top" id="seat-top"></div>
+      <div class="board-wrap">
+        <svg id="board" role="img" aria-label="Chess board"></svg>
+        <div class="banner" id="banner" hidden></div>
+      </div>
+      <div class="seat seat-bottom" id="seat-bottom"></div>
+      <p class="status" id="status" aria-live="polite"></p>
+      <ol class="moves" id="moves" aria-label="Moves"></ol>
+    </section>
+
+    <aside class="side">
+      <div class="modes" role="tablist">
+        <button role="tab" data-mode="play" aria-selected="true">Play the fly</button>
+        <button role="tab" data-mode="watch" aria-selected="false">Fly vs fly</button>
+        <button role="tab" data-mode="train" aria-selected="false">Raise your fly</button>
+      </div>
+
+      <section class="panel" data-panel="play">
+        <label class="field">
+          <span>Opponent</span>
+          <select id="play-opp"></select>
+        </label>
+        <div class="field">
+          <span>You play</span>
+          <div class="seg" id="play-color">
+            <button data-v="w" aria-pressed="true">White</button>
+            <button data-v="b" aria-pressed="false">Black</button>
+            <button data-v="r" aria-pressed="false">Random</button>
+          </div>
+        </div>
+        <div class="field">
+          <span>The fly looks ahead</span>
+          <div class="seg" id="play-depth">
+            <button data-v="1" aria-pressed="true">1 move</button>
+            <button data-v="2" aria-pressed="false">2 moves</button>
+            <button data-v="3" aria-pressed="false">3 moves</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="show-arrows" checked> Show the moves it considered</label>
+        <div class="actions">
+          <button class="primary" id="play-new">New game</button>
+          <button id="play-undo">Take back</button>
+          <button id="play-resign">Resign</button>
+          <button id="flip" title="Flip the board">Flip</button>
+        </div>
+        <p class="note" id="play-note"></p>
+      </section>
+
+      <section class="panel" data-panel="watch" hidden>
+        <div class="versus">
+          <label class="field"><span>White</span><select id="watch-w"></select></label>
+          <label class="field"><span>Black</span><select id="watch-b"></select></label>
+        </div>
+        <div class="field">
+          <span>Speed</span>
+          <div class="seg" id="watch-speed">
+            <button data-v="0.6" aria-pressed="false">Slow</button>
+            <button data-v="1" aria-pressed="true">Normal</button>
+            <button data-v="2.5" aria-pressed="false">Fast</button>
+            <button data-v="0" aria-pressed="false">No flying</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="watch-loop" checked> Start the next game automatically</label>
+        <div class="actions">
+          <button class="primary" id="watch-start">Start</button>
+          <button id="watch-pause">Pause</button>
+        </div>
+        <p class="score" id="watch-score"></p>
+        <p class="note">Flies with white eyes play White (the classic <i>w</i><sup>1118</sup> lab mutant); red-eyed wild types play Black. If your fly is in the match, it learns from every game.</p>
+      </section>
+
+      <section class="panel" data-panel="train" hidden>
+        <div class="tag" id="mine-tag"></div>
+        <div class="life" id="life" aria-label="Life stage"></div>
+        <div class="actions">
+          <button class="primary" id="train-toggle">Start training</button>
+          <button id="train-exam">Test strength now</button>
+        </div>
+        <label class="check"><input type="checkbox" id="train-live" checked> Show its games on the board</label>
+        <p class="note" id="train-note">Your fly plays against itself as fast as your computer allows. After every game, dopamine rewires the synapses between its Kenyon cells and the output neuron. Once it is an adult it practises thinking two moves ahead, which is slower but teaches it more. Now and then it sits an exam against four fixed opponents, and the result goes on the chart below.</p>
+        <div class="actions small">
+          <button id="mine-export">Save brain to file</button>
+          <label class="button" for="mine-import">Load brain file</label>
+          <input type="file" id="mine-import" accept=".json,application/json" hidden>
+          <button id="mine-reset">Hatch a new egg</button>
+        </div>
+        <label class="field">
+          <span>Wiring for a new egg</span>
+          <select id="egg-wiring">
+            <option value="flywire">Real: the mushroom body of the FlyWire connectome</option>
+            <option value="random">Random: 4,000 Kenyon cells wired at random</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="scope" aria-label="Brain activity">
+        <div class="scope-head">
+          <h2>Inside its head</h2>
+          <p id="scope-who"></p>
+        </div>
+        <canvas id="brain" width="560" height="300"></canvas>
+        <canvas id="brain3d" class="brain3d"></canvas>
+        <p class="scope-readout" id="scope-readout" hidden></p>
+        <p class="scope-cap" id="scope-cap">Each lit square on the left is one input: a piece on a square, from the fly's side of the board. In a real-wired fly two or three inputs share each of its 285 projection neurons. Any Kenyon cell that gets two active projection neurons fires. The output neuron adds up the synapses of the cells that fired, and that sum is the fly's whole opinion of the position.</p>
+      </section>
+
+      <section class="learned" aria-label="What it has learned">
+        <h2>What <span id="learned-who">it</span> has figured out</h2>
+        <div class="prices" id="prices"></div>
+        <p class="note">Nobody told it what pieces are worth. These are the values it arrived at on its own, in pawns; textbook values in grey.</p>
+        <canvas id="curve" class="curve"></canvas>
+        <p class="note">Strength on the ChessFly scale (a random mover is 400). Dashed lines are the fixed exam opponents: Greedy grabs the biggest capture, Counter and Sentinel count material 1 and 2 moves ahead.</p>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="foot">
+    <p>ChessFly is a toy model. The projection neuron to Kenyon cell wiring is the real one from the FlyWire connectome (v783) and the learning rule comes from the insect mushroom body, but the inputs are chess pieces, not smells, and a small search is bolted on. No real fly can play chess. <a href="https://github.com/znatgost/chessfly#how-it-works">How it works</a>.</p>
+  </footer>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
