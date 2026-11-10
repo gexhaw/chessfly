@@ -70,6 +70,29 @@ async def main():
         v, box = await record(a.url + '/index.html?mode=watch', [pick], 14)
         to_gif(v, os.path.join(a.out, 'fly.gif'), 1.6, 11, width=520, fps=16, crop=box)
 
+    if a.what in ('all', 'sandbox'):
+        async def mess(pg):
+            await pg.wait_for_timeout(2500)
+            box = await pg.locator('#board').bounding_box()
+            k = box['width'] / 912
+            c = lambda sq: (box['x'] + (('abcdefgh'.index(sq[0])) * 100 + 106) * k, box['y'] + ((8 - int(sq[1])) * 100 + 106) * k)
+            async def drag(a, b, steps=14, delay=35):
+                x0, y0 = c(a); x1, y1 = b if isinstance(b, tuple) else c(b)
+                await pg.mouse.move(x0, y0); await pg.mouse.down()
+                for i in range(1, steps + 1):
+                    await pg.mouse.move(x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps); await pg.wait_for_timeout(delay)
+                await pg.mouse.up()
+            await drag('e2', 'e4'); await pg.wait_for_timeout(4200)
+            await drag('g1', 'g5'); await pg.wait_for_timeout(5200)       # a knight that forgot how knights move
+            await drag('d8', (box['x'] - 40, c('d8')[1])); await pg.wait_for_timeout(5200)  # steal its queen
+            await drag('a1', (box['x'] + box['width'] * 0.5, box['y'] + 10), steps=4, delay=14)  # throw a rook at it
+            await pg.wait_for_timeout(5500)
+            await pg.click('#sb-tray button[data-p="5"]')
+            for sq in ('c3', 'f3'):
+                await pg.mouse.click(*c(sq)); await pg.wait_for_timeout(4600)
+        v, box = await record(a.url + '/index.html?mode=free', [mess], 6, h=860)
+        to_gif(v, os.path.join(a.out, 'sandbox.gif'), 3.0, 46, speed=1.4, width=860, fps=12, colors=128)
+
     if a.what in ('all', 'train'):
         async def go(pg):
             await pg.evaluate("localStorage.removeItem('chessfly.mine')")

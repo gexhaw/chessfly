@@ -12,6 +12,8 @@ jobs:
         run: node test/perft.mjs
       - name: Mushroom body model (real, shuffled and random wiring)
         run: node test/brain.mjs
+      - name: Thinking with a clock (mates, interruptions, time budget)
+        run: node test/think.mjs
       - name: An egg with real FlyWire wiring learns chess from scratch (1,000 self-play games)
         run: node test/learning.mjs 1000 flywire
       - name: The same with random wiring

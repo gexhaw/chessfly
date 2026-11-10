@@ -1,6 +1,7 @@
 // Players: the fly, and three fixed benchmark opponents used to measure how strong it has become.
 
 import { Searcher, pick, clampScore } from './search.js';
+import { Thinker } from './think.js';
 import { material, moveFlags, moveTo, movePromo, F_CAPTURE, PIECE_VALUE, PAWN } from './chess.js';
 
 export class FlyPlayer {
@@ -26,6 +27,20 @@ export class FlyPlayer {
       return { move: ms[Math.floor(rnd() * ms.length)], score: clampScore(r.score), explored: true };
     }
     return { move: r.move, score: clampScore(r.score) };
+  }
+}
+
+// The fly with a clock: same gut feeling, a much better way of looking ahead (think.js).
+export class ThinkingFly {
+  constructor(brain, { timeMs = 300, maxDepth = 64, name = null } = {}) {
+    this.brain = brain; this.kind = 'fly'; this.timeMs = timeMs; this.maxDepth = maxDepth;
+    this.thinker = new Thinker(brain);
+    this.label = name;
+  }
+  get name() { return this.label || `${this.brain.name} ${this.timeMs} ms`; }
+  choose(pos, rnd) {
+    const r = this.thinker.think(pos, { timeMs: this.timeMs, maxDepth: this.maxDepth, rnd });
+    return { move: r.move, score: clampScore(r.score), depth: r.depth };
   }
 }
 

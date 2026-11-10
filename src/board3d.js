@@ -139,6 +139,12 @@ function buildFly(eye) {
   const sh = new Mesh(new CircleGeometry(0.28, 24), new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false }));
   sh.rotation.x = -Math.PI / 2; fly.shadow = sh;
   fly.body = body;
+  fly.eyeMat = eyes;
+  // little stars for when it gets hit (hidden until then)
+  fly.stars = new Group();
+  const starMat = new MeshBasicMaterial({ color: 0xffd34d });
+  for (let k = 0; k < 3; k++) { const st = new Mesh(new SphereGeometry(0.025, 8, 6), starMat); fly.stars.add(st); }
+  fly.stars.position.set(0, 0.16, -0.12); fly.stars.visible = false; body.add(fly.stars);
   fly.scale.setScalar(1.8);
   return fly;
 }
@@ -184,6 +190,7 @@ export class Board3D {
     this.gHi = new Group(); sc.add(this.gHi);
     this.gArrows = new Group(); sc.add(this.gArrows);
     this.gFly = new Group(); sc.add(this.gFly);
+    this.gDebris = new Group(); sc.add(this.gDebris); // pieces thrown off the board stay where they fell
     this.ray = new Raycaster();
     this.bindInput();
     new ResizeObserver(() => this.resize()).observe(container);
@@ -328,10 +335,15 @@ export class Board3D {
 
   bindInput() {
     let down = null;
+    // sandbox: grab a piece (this runs before the orbit controls see the event)
+    this.canvas.addEventListener('pointerdown', (e) => this.freeDown(e), { capture: true });
+    this.canvas.addEventListener('pointermove', (e) => this.freeMove(e));
+    this.canvas.addEventListener('pointerup', (e) => this.freeUp(e), { capture: true });
     this.canvas.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
     this.canvas.addEventListener('pointerup', (e) => {
       if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) { down = null; return; }
       down = null;
+      if (this.free && this.placing && !this.freeLocked) { const i = this.pick(e); if (i >= 0) this.free({ type: 'add', to: i }); return; }
       if (!this.legal || this.promoOpen) return;
       const i = this.pick(e);
       if (i < 0) return;
@@ -362,6 +374,244 @@ export class Board3D {
       done([5, 4, 3, 2][+b.dataset.k]);
     });
     this.container.appendChild(box);
+  }
+
+
+  // ---- sandbox (no rules): same interface as the 2D board ----
+  setFree(handler) {
+    this.free = handler; this.fdrag = null; this.freeLocked = false; this.sel = -1; this.legal = null;
+    this.controls.enabled = true;
+    if (!handler) { this.clearDebris(); if (this.bubble) { this.bubble.remove(); this.bubble = null; } }
+    this.highlight();
+  }
+  clearDebris() { this.gDebris.clear(); }
+
+  rayOf(e) {
+    const r = this.canvas.getBoundingClientRect();
+    this.ray.setFromCamera(new Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+    return this.ray.ray;
+  }
+  planeAt(e, y = BOARD_Y) {
+    const ray = this.rayOf(e);
+    if (Math.abs(ray.direction.y) < 1e-6) return null;
+    const t = (y - ray.origin.y) / ray.direction.y;
+    return t > 0 ? ray.origin.clone().addScaledVector(ray.direction, t) : null;
+  }
+  sqAtXZ(x, z) {
+    const f = Math.round(x + 3.5), r = Math.round(3.5 - z);
+    return Math.abs(x) < 4 && Math.abs(z) < 4 && f >= 0 && f < 8 && r >= 0 && r < 8 ? r * 8 + f : -1;
+  }
+  freeDown(e) {
+    if (!this.free || this.freeLocked || this.placing) return;
+    this.rayOf(e);
+    const hit = this.ray.intersectObjects(this.gPieces.children, true)[0];
+    if (!hit) return; // empty space: let the camera orbit
+    let o = hit.object;
+    while (o && o.userData.sq === undefined) o = o.parent;
+    if (!o) return;
+    this.controls.enabled = false;
+    e.stopImmediatePropagation();
+    this.canvas.setPointerCapture(e.pointerId);
+    const p = this.planeAt(e) || o.position.clone();
+    this.fdrag = { u: o, i: o.userData.sq, trail: [[p.x, p.z, performance.now()]], moved: false, x0: e.clientX, y0: e.clientY };
+  }
+  freeMove(e) {
+    const d = this.fdrag;
+    if (!d) return;
+    const p = this.planeAt(e);
+    if (!p) return;
+    const t = performance.now();
+    if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 4) d.moved = true;
+    d.trail.push([p.x, p.z, t]);
+    while (d.trail.length > 2 && t - d.trail[0][2] > 90) d.trail.shift();
+    d.u.position.set(p.x, BOARD_Y + 0.55, p.z);
+  }
+  freeUp(e) {
+    const d = this.fdrag;
+    if (!d) return;
+    this.fdrag = null;
+    this.controls.enabled = true;
+    e.stopImmediatePropagation();
+    const p = this.planeAt(e) || d.u.position.clone();
+    const t = performance.now();
+    const [x0, z0, t0] = d.trail[0];
+    const dt = Math.max(16, t - t0);
+    const vx = (p.x - x0) / dt, vz = (p.z - z0) / dt, speed = Math.hypot(vx, vz);
+    const back = () => d.u.position.set(sqX(d.i), BOARD_Y, sqZ(d.i));
+    if (d.moved && speed > 0.012 && t - d.trail[d.trail.length - 1][2] < 60) {
+      this.free({ type: 'throw', from: d.i, x: p.x, y: p.z, vx, vy: vz, u: d.u });
+      return;
+    }
+    const i = this.sqAtXZ(p.x, p.z);
+    if (!d.moved || i === d.i) { back(); return; }
+    if (i < 0) { this.free({ type: 'remove', from: d.i, u: d.u }); return; }
+    d.u.position.set(sqX(i), BOARD_Y, sqZ(i));
+    this.free({ type: 'move', from: d.i, to: i, u: d.u });
+  }
+
+  // lay a piece on its side where it is, as debris (off the board it stays until the sandbox resets)
+  toDebris(u, y) {
+    this.gPieces.remove(u);
+    this.gDebris.add(u);
+    u.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2);
+    u.position.y = y + 0.27;
+  }
+  // a piece taken off the board drops onto the table next to it
+  vanish(u) {
+    if (!u) return;
+    const x = u.position.x, z = u.position.z;
+    if (Math.abs(x) < 4 && Math.abs(z) < 4) { this.shrink(u, 250); return; }
+    const onFrame = Math.abs(x) < 4.7 && Math.abs(z) < 4.7;
+    this.toDebris(u, onFrame ? BOARD_Y : -0.36);
+  }
+
+  // A real throw: gravity, bounces on the board and the table, tumbling, and maybe a direct hit on the fly.
+  // x, z (world) and vx, vz (world units per ms) come from the drag. Resolves to { sq, out, hitFly }.
+  throwPiece(u, x, z, vx, vz, flyName = null) {
+    const fly = flyName ? this.flies.get(flyName) : null;
+    let px = x, py = u.position.y, pz = z;
+    let vX = vx * 1000 * 0.32, vZ = vz * 1000 * 0.32;
+    let vY = 2.2 + Math.hypot(vX, vZ) * 0.22;
+    const spin = new Vector3((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 14);
+    let hitFly = false, last = performance.now(), age = 0;
+    return new Promise((res) => {
+      const step = (now) => {
+        const dt = Math.max(0, Math.min(0.04, (now - last) / 1000)); last = Math.max(last, now); age += dt;
+        vY -= 22 * dt;
+        px += vX * dt; py += vY * dt; pz += vZ * dt;
+        const onBoard = Math.abs(px) < 4.7 && Math.abs(pz) < 4.7;
+        const floor = onBoard ? BOARD_Y : -0.36;
+        let grounded = false;
+        if (py <= floor && vY <= 0) {
+          py = floor;
+          if (vY < -1.5) { vY = -vY * 0.35; vX *= 0.75; vZ *= 0.75; spin.multiplyScalar(0.6); } else { vY = 0; grounded = true; }
+        }
+        if (grounded) { const f = Math.exp(-dt * 5); vX *= f; vZ *= f; spin.multiplyScalar(Math.exp(-dt * 6)); }
+        if (fly && !hitFly && fly.g.position.distanceTo(new Vector3(px, py + 0.3, pz)) < 0.55) {
+          hitFly = true; vX *= -0.35; vZ *= -0.35; vY = Math.max(vY, 1.5);
+        }
+        u.position.set(px, py, pz);
+        u.rotation.x += spin.x * dt; u.rotation.y += spin.y * dt; u.rotation.z += spin.z * dt;
+        const done = (grounded && Math.hypot(vX, vZ) < 0.25) || age > 5;
+        if (!done) { requestAnimationFrame(step); return; }
+        const sq = this.sqAtXZ(px, pz);
+        if (sq >= 0) {
+          const victim = this.pieces.get(sq);
+          if (victim && victim !== u) this.knock(victim, vX, vZ);
+          u.rotation.set(0, 0, 0); u.position.set(sqX(sq), BOARD_Y, sqZ(sq));
+        } else this.toDebris(u, floor);
+        res({ sq, out: sq < 0, hitFly });
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  // a piece hit by a thrown one goes flying off the board and ends up lying on the table
+  knock(v, dirX, dirZ) {
+    this.gPieces.remove(v); this.gDebris.add(v);
+    let dx = v.position.x, dz = v.position.z;
+    if (Math.hypot(dx, dz) < 0.5) { dx = dirX; dz = dirZ; }
+    const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+    const need = 5.8 - (v.position.x * dx + v.position.z * dz);
+    let px = v.position.x, py = v.position.y, pz = v.position.z, vY = 5;
+    const vX = (dx * need) / 0.45, vZ = (dz * need) / 0.45;
+    const spin = new Vector3(9 * (Math.random() - 0.5), 4, 9 * (Math.random() - 0.5));
+    let last = performance.now();
+    const step = (now) => {
+      const dt = Math.max(0, Math.min(0.04, (now - last) / 1000)); last = Math.max(last, now);
+      vY -= 22 * dt; px += vX * dt; py += vY * dt; pz += vZ * dt;
+      v.rotation.x += spin.x * dt; v.rotation.y += spin.y * dt; v.rotation.z += spin.z * dt;
+      const floor = Math.abs(px) < 4.7 && Math.abs(pz) < 4.7 ? BOARD_Y : -0.36;
+      if (py <= floor && vY <= 0) { v.position.set(px, floor, pz); this.toDebris(v, floor); return; }
+      v.position.set(px, py, pz);
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  // ---- the fly's moods ----
+  say(name, text, mood = 'calm', ms = 2600) {
+    const f = this.flies.get(name);
+    if (!f) return;
+    if (this.bubble) this.bubble.remove();
+    const b = document.createElement('div');
+    b.className = `bubble3d ${mood}`;
+    b.textContent = text;
+    this.container.appendChild(b);
+    this.bubble = b; this.bubbleFly = f;
+    this.placeBubble();
+    clearTimeout(this.bubbleT);
+    this.bubbleT = setTimeout(() => { if (this.bubble === b) { b.classList.add('out'); setTimeout(() => b.remove(), 300); this.bubble = null; } }, ms);
+  }
+  placeBubble() {
+    const b = this.bubble, f = this.bubbleFly;
+    if (!b || !f) return;
+    const v = f.g.position.clone(); v.y += 0.55;
+    v.project(this.camera);
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    const x = Math.max(90, Math.min(w - 90, ((v.x + 1) / 2) * w)), y = ((1 - v.y) / 2) * h;
+    b.style.left = `${x}px`; b.style.top = `${Math.max(46, y)}px`;
+  }
+  async moodFor(name, key, ms) {
+    const f = this.flies.get(name);
+    if (!f) return;
+    f[key] = true; await sleep(ms); f[key] = false;
+  }
+  angry(name, ms = 900) { return this.moodFor(name, 'angry', ms); }
+  dizzy(name) { return this.moodFor(name, 'dizzy', 1700); }
+  async dodge(name) {
+    const f = this.flies.get(name);
+    if (!f) return;
+    const p = f.g.position.clone(), yaw = f.g.rotation.y;
+    const dx = p.x > 0 ? -1.3 : 1.3;
+    await this.flyTo(f, p.x + dx, p.y + 0.5, p.z, 220);
+    await sleep(380);
+    await this.flyTo(f, p.x, p.y, p.z, 420);
+    f.g.rotation.set(0, yaw, 0); f.flying = false;
+  }
+  async panic(name) {
+    const f = this.flies.get(name);
+    if (!f) return;
+    const p = f.g.position.clone(), yaw = f.g.rotation.y;
+    for (const [x, z] of [[-2.8, -2.4], [2.6, -1.6], [1.8, 2.6], [-2.2, 1.8], [0, 0]]) await this.flyTo(f, x, 1.3, z, 340);
+    await this.flyTo(f, p.x, p.y, p.z, 450);
+    f.g.rotation.set(0, yaw, 0); f.flying = false;
+  }
+  // the fly carries a piece to a square (toSq), or off the board onto the table (toSq = -1)
+  async carry(name, fromSq, toSq, homeSide, speed = 1) {
+    const f = this.flies.get(name), piece = this.pieces.get(fromSq);
+    if (!f || !piece) return;
+    const k = 1 / speed, grip = 1.15, lift = 0.9;
+    const fx = sqX(fromSq), fz = sqZ(fromSq);
+    await this.flyTo(f, fx, BOARD_Y + grip, fz, Math.min(900, 380 + f.g.position.distanceTo(new Vector3(fx, grip, fz)) * 60) * k);
+    await this.flyTo(f, fx, BOARD_Y + grip + lift, fz, 220 * k, piece, grip);
+    let tx, tz;
+    if (toSq >= 0) { tx = sqX(toSq); tz = sqZ(toSq); } else { tx = fx < 0 ? -5.6 : 5.6; tz = Math.max(-3.5, Math.min(3.5, fz)); }
+    await this.flyTo(f, tx, BOARD_Y + grip + lift, tz, Math.min(1000, 300 + Math.hypot(tx - fx, tz - fz) * 70) * k, piece, grip);
+    if (toSq >= 0) {
+      await this.flyTo(f, tx, BOARD_Y + grip, tz, 240 * k, piece, grip);
+      piece.position.set(tx, BOARD_Y, tz);
+      this.pieces.delete(fromSq); this.pieces.set(toSq, piece); piece.userData.sq = toSq;
+    } else {
+      // let go: it drops onto the table
+      const y0 = piece.position.y, t0 = performance.now();
+      await new Promise((res) => {
+        const step = (now) => {
+          const t = Math.min(1, (now - t0) / 380);
+          piece.position.y = y0 + (-0.36 - y0) * t * t; piece.rotation.z = (Math.PI / 2) * t;
+          if (t < 1) requestAnimationFrame(step); else res();
+        };
+        requestAnimationFrame(step);
+      });
+      this.pieces.delete(fromSq);
+      this.toDebris(piece, -0.36);
+    }
+    await sleep(90 * k);
+    if (homeSide) {
+      const [px, pz] = this.perchXZ(homeSide, 3.5);
+      await this.flyTo(f, px, 0.12, pz, 520 * k);
+      f.g.rotation.set(0, homeSide === 'w' ? 0 : Math.PI, 0); f.flying = false;
+    }
   }
 
   // ---- flies ----
@@ -474,17 +724,22 @@ export class Board3D {
       const g = f.g;
       for (const w of g.wings) {
         const s = w.userData.side;
-        if (f.flying) { w.rotation.z = s * (0.3 + 0.9 * Math.abs(Math.sin(t * 60))); w.rotation.y = s * 0.9; }
+        if (f.flying || f.angry) { w.rotation.z = s * (0.3 + 0.9 * Math.abs(Math.sin(t * 60))); w.rotation.y = s * 0.9; }
         else { w.rotation.z = 0; w.rotation.y = s * 0.12; }
       }
       g.legs.fl.rotation.x = f.six ? 0.9 + 0.7 * Math.sin(t * 13.6) : 0;
       g.legs.fr.rotation.x = f.six ? 0.9 - 0.7 * Math.sin(t * 13.6) : 0;
       g.body.position.y = f.flying ? 0.01 * Math.sin(t * 40) : 0;
-      g.body.rotation.z = f.sulk ? 0.18 * Math.sin(t * 18) : 0;
+      g.body.rotation.z = f.sulk ? 0.18 * Math.sin(t * 18) : f.angry ? 0.12 * Math.sin(t * 70) : 0;
+      g.body.rotation.y = f.dizzy ? (t * 9) % (Math.PI * 2) : 0;
+      g.eyeMat.emissive.setHex(f.angry ? 0xff1a1a : 0x000000); g.eyeMat.emissiveIntensity = f.angry ? 0.9 + 0.5 * Math.sin(t * 20) : 0;
+      g.stars.visible = !!f.dizzy;
+      if (f.dizzy) g.stars.children.forEach((st, k) => { const a = t * 6 + (k * Math.PI * 2) / 3; st.position.set(Math.cos(a) * 0.14, 0.02 * Math.sin(a * 2), Math.sin(a) * 0.14); });
       g.shadow.position.set(g.position.x, BOARD_Y + 0.005 - (Math.abs(g.position.z) > 4 ? -0.02 : 0), g.position.z);
       g.shadow.material.opacity = Math.max(0.05, 0.25 - (g.position.y - 0.1) * 0.08);
     }
     this.controls.update();
+    this.placeBubble();
     this.renderer.render(this.scene, this.camera);
   }
 }

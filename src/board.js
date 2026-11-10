@@ -123,6 +123,7 @@ export class Board {
   bindInput() {
     let drag = null;
     this.svg.addEventListener('pointerdown', (e) => {
+      if (this.free) { this.freeDown(e); return; }
       if (!this.legal || this.promoOpen) return;
       const { i, p } = this.sqAt(e);
       if (i < 0) return;
@@ -138,6 +139,7 @@ export class Board {
       } else { this.sel = -1; this.highlight(); }
     });
     this.svg.addEventListener('pointermove', (e) => {
+      if (this.free) { this.freeMove(e); return; }
       if (!drag) return;
       const { p } = this.sqAt(e);
       drag.moved = true;
@@ -145,6 +147,7 @@ export class Board {
       drag.u.classList.add('dragging');
     });
     this.svg.addEventListener('pointerup', (e) => {
+      if (this.free) { this.freeUp(e); return; }
       if (!drag) return;
       const d = drag; drag = null;
       d.u.classList.remove('dragging');
@@ -179,6 +182,199 @@ export class Board {
       const u = el('use', { href: `#piece-${white ? 'w' : 'b'}${t}`, x: x + k * 100 + 5, y: 350, width: 90, height: 90, class: 'promo-pick' }, g);
       u.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); this.gOver.innerHTML = ''; this.promoOpen = false; done(codes[k]); });
     });
+  }
+
+
+  // ---- sandbox input: no rules at all ----
+  // handler(action): {type:'move', from, to} | {type:'remove', from} | {type:'throw', from, x, y, vx, vy}
+  //                  | {type:'add', to} (click on a square while a piece is picked in the tray)
+  setFree(handler) {
+    this.free = handler; this.fdrag = null; this.sel = -1; this.legal = null; this.freeLocked = false;
+    this.svg.classList.toggle('free', !!handler);
+    this.highlight();
+  }
+  boardPoint(evt) {
+    const pt = this.svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(this.gSq.getScreenCTM().inverse());
+  }
+  freeDown(e) {
+    if (this.freeLocked) return;
+    const { i, p } = this.sqAt(e);
+    if (this.placing && i >= 0) { this.free({ type: 'add', to: i }); return; }
+    if (i < 0) return;
+    const u = [...this.gPieces.children].find((c) => +c.dataset.i === i);
+    if (!u) return;
+    this.gPieces.appendChild(u);
+    u.classList.add('dragging');
+    this.fdrag = { u, i, trail: [[p.x, p.y, performance.now()]], moved: false };
+    this.svg.setPointerCapture(e.pointerId);
+  }
+  freeMove(e) {
+    const d = this.fdrag;
+    if (!d) return;
+    const p = this.boardPoint(e), t = performance.now();
+    d.moved = true;
+    d.trail.push([p.x, p.y, t]);
+    while (d.trail.length > 2 && t - d.trail[0][2] > 90) d.trail.shift();
+    d.u.setAttribute('x', p.x - 45); d.u.setAttribute('y', p.y - 45);
+  }
+  freeUp(e) {
+    const d = this.fdrag;
+    if (!d) return;
+    this.fdrag = null;
+    d.u.classList.remove('dragging');
+    const p = this.boardPoint(e), t = performance.now();
+    const [x0, y0, t0] = d.trail[0];
+    const dt = Math.max(16, t - t0);
+    const vx = (p.x - x0) / dt, vy = (p.y - y0) / dt, speed = Math.hypot(vx, vy);
+    const back = () => { const [x, y] = this.xy(d.i); d.u.setAttribute('x', x + 5); d.u.setAttribute('y', y + 5); };
+    if (d.moved && speed > 1.25 && t - d.trail[d.trail.length - 1][2] < 60) {
+      this.free({ type: 'throw', from: d.i, x: p.x, y: p.y, vx, vy, u: d.u });
+      return;
+    }
+    const { i } = this.sqAt(e);
+    if (!d.moved || i === d.i) { back(); return; }
+    if (i < 0) { this.free({ type: 'remove', from: d.i, u: d.u }); return; }
+    this.free({ type: 'move', from: d.i, to: i, u: d.u });
+  }
+
+  // A thrown piece: slides and spins across the board, bounces off the frame, maybe flies off
+  // altogether, maybe hits the fly. Resolves to { sq (landing square or -1), out, hitFly }.
+  throwPiece(u, x, y, vx, vy, flyName = null) {
+    const fly = flyName ? this.flies.get(flyName) : null;
+    const lo = -M + 30, hi = 800 + M - 30;
+    vx *= 0.35; vy *= 0.35;
+    let z = 0, vz = Math.min(0.9, 0.25 + Math.hypot(vx, vy) * 0.25), ang = 0, out = false, hitFly = false;
+    const spin = (vx >= 0 ? 1 : -1) * (0.6 + Math.hypot(vx, vy) * 0.5);
+    u.classList.add('lifted', 'thrown');
+    this.gPieces.appendChild(u);
+    return new Promise((res) => {
+      let last = performance.now();
+      const step = (now) => {
+        const dt = Math.max(0, Math.min(40, now - last)); last = Math.max(last, now);
+        x += vx * dt; y += vy * dt;
+        z += vz * dt; vz -= 0.0032 * dt;
+        if (z <= 0 && vz <= 0) { z = 0; vz = Math.abs(vz) > 0.12 ? -vz * 0.35 : 0; vx *= 0.82; vy *= 0.82; }
+        const f = Math.exp(-dt / (z > 0 ? 2200 : 420));
+        vx *= f; vy *= f;
+        ang += spin * dt * Math.min(1, Math.hypot(vx, vy) + 0.1);
+        const speed = Math.hypot(vx, vy);
+        if (!out) {
+          if (x < lo || x > hi) { if (speed > 0.9 || z > 40) out = true; else { vx = -vx * 0.55; x = Math.max(lo, Math.min(hi, x)); } }
+          if (y < lo || y > hi) { if (speed > 0.9 || z > 40) out = true; else { vy = -vy * 0.55; y = Math.max(lo, Math.min(hi, y)); } }
+        }
+        if (fly && !hitFly && z < 70 && Math.hypot(x - fly.x, y - fly.y) < 58) {
+          hitFly = true; vx *= -0.4; vy *= -0.4;
+        }
+        const s = 1 + z / 160;
+        u.setAttribute('x', x - 45); u.setAttribute('y', y - 45 - z * 0.6);
+        u.setAttribute('transform', `rotate(${ang.toFixed(1)} ${x.toFixed(1)} ${(y - z * 0.6).toFixed(1)}) translate(${x} ${y}) scale(${s.toFixed(3)}) translate(${-x} ${-y})`);
+        const gone = out && (x < -M - 120 || x > 800 + M + 120 || y < -M - 120 || y > 800 + M + 120);
+        if (gone || (speed < 0.03 && z === 0 && vz === 0)) {
+          u.classList.remove('lifted', 'thrown');
+          u.removeAttribute('transform');
+          let sq = -1;
+          if (!gone && x >= 0 && x < 800 && y >= 0 && y < 800) {
+            const cx = Math.floor(x / 100), cy = Math.floor(y / 100);
+            sq = (this.flipped ? cy : 7 - cy) * 8 + (this.flipped ? 7 - cx : cx);
+          }
+          res({ sq, out: gone || sq < 0, hitFly });
+          return;
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  // fade a piece out where it lies (rolled off the board, or swept away)
+  vanish(u) {
+    if (!u) return;
+    u.classList.add('captured');
+    setTimeout(() => u.remove(), 300);
+  }
+
+  // ---- fly moods (sandbox) ----
+  say(flyName, text, mood = 'calm', ms = 2600) {
+    const f = this.flies.get(flyName);
+    if (!f) return;
+    if (this.bubble) this.bubble.remove();
+    const g = el('g', { class: `bubble ${mood}` }, this.gOver);
+    const t = el('text', { 'text-anchor': 'middle' }, g);
+    t.textContent = text;
+    const w = Math.min(760, Math.max(120, text.length * 15.5 + 44)), h = 62;
+    const top = f.y < 400;
+    const bx = Math.min(800 + M - w / 2 - 6, Math.max(-M + w / 2 + 6, f.x));
+    const by = top ? f.y + 52 : f.y - 52 - h;
+    const tail = top ? `M${f.x - 12},${by} L${f.x},${f.y + 26} L${f.x + 12},${by}` : `M${f.x - 12},${by + h} L${f.x},${f.y - 26} L${f.x + 12},${by + h}`;
+    g.insertBefore(el('path', { d: tail, class: 'bubble-tail' }), t);
+    g.insertBefore(el('rect', { x: bx - w / 2, y: by, width: w, height: h, rx: 22 }), g.querySelector('path'));
+    t.setAttribute('x', bx); t.setAttribute('y', by + 41);
+    this.bubble = g;
+    clearTimeout(this.bubbleT);
+    this.bubbleT = setTimeout(() => { if (this.bubble === g) { g.classList.add('out'); setTimeout(() => g.remove(), 300); this.bubble = null; } }, ms);
+  }
+  async mood(flyName, cls, ms) {
+    const f = this.flies.get(flyName);
+    if (!f) return;
+    f.g.classList.add(cls);
+    await sleep(ms);
+    f.g.classList.remove(cls);
+  }
+  angry(flyName, ms = 900) { return this.mood(flyName, 'angry', ms); }
+  async dizzy(flyName) {
+    const f = this.flies.get(flyName);
+    if (!f) return;
+    const stars = el('g', { class: 'stars', transform: `translate(${f.x} ${f.y})` }, this.gOver);
+    for (let k = 0; k < 3; k++) el('text', { class: `star s${k}`, 'text-anchor': 'middle', y: 8 }, stars).textContent = '✦';
+    await this.mood(flyName, 'dizzy', 1700);
+    stars.remove();
+  }
+  // a startled hop sideways and back
+  async dodge(flyName) {
+    const f = this.flies.get(flyName);
+    if (!f) return;
+    const x0 = f.x, y0 = f.y, a0 = f.a, s0 = f.s;
+    const dx = x0 > 400 ? -110 : 110;
+    await this.flyTo(f, x0 + dx, y0, 220, 0.75);
+    await sleep(380);
+    await this.flyTo(f, x0, y0, 420, s0);
+    f.a = a0; this.place(f); f.g.classList.remove('flying');
+  }
+  // a panicked lap around the board
+  async panic(flyName) {
+    const f = this.flies.get(flyName);
+    if (!f) return;
+    const x0 = f.x, y0 = f.y, a0 = f.a, s0 = f.s;
+    for (const [x, y] of [[120, 160], [690, 230], [560, 650], [170, 560], [400, 380]]) await this.flyTo(f, x, y, 330, 0.95);
+    await this.flyTo(f, x0, y0, 420, s0);
+    f.a = a0; this.place(f); f.g.classList.remove('flying');
+  }
+  // the fly carries a piece somewhere: to a square (toSq) or off the board (toSq = -1, then drops it)
+  async carry(flyName, fromSq, toSq, homeSide, speed = 1) {
+    const f = this.flies.get(flyName);
+    const u = [...this.gPieces.children].find((c) => +c.dataset.i === fromSq);
+    if (!f || !u) return;
+    const k = 1 / speed;
+    const [fx, fy] = this.center(fromSq);
+    await this.flyTo(f, fx, fy - 10, Math.min(700, 260 + Math.hypot(fx - f.x, fy - f.y) * 0.5) * k, 1);
+    this.gPieces.appendChild(u);
+    u.classList.add('lifted');
+    await sleep(70 * k);
+    let tx, ty;
+    if (toSq >= 0) [tx, ty] = this.center(toSq);
+    else { tx = fx < 400 ? -M - 10 : 800 + M + 10; ty = Math.max(60, Math.min(740, fy)); }
+    await this.flyTo(f, tx, ty - 18, Math.min(900, 300 + Math.hypot(tx - fx, ty - fy) * 0.55) * k, 1, u);
+    u.classList.remove('lifted');
+    if (toSq >= 0) { const [px, py] = this.xy(toSq); u.setAttribute('x', px + 5); u.setAttribute('y', py + 5); u.dataset.i = toSq; }
+    else this.vanish(u);
+    await sleep(90 * k);
+    if (homeSide) {
+      const bottom = (homeSide === 'w') !== this.flipped;
+      await this.flyTo(f, 400, bottom ? 800 + M * 0.5 : -M * 0.5, 420 * k, 0.62);
+      f.a = bottom ? 0 : 180; this.place(f); f.g.classList.remove('flying');
+    }
   }
 
   // ---- flies ----

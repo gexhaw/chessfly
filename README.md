@@ -4,26 +4,32 @@
 
 <p align="center"><img src="docs/demo3d.gif" width="860" alt="A 3D fruit fly carries a chess piece across the board while the Kenyon cells of its real FlyWire mushroom body light up"></p>
 
-**[▶ Play it in the browser](https://znatgost.github.io/chessfly/)** · no install, no server, no GPU
+**[▶ Play it in the browser](https://gexhaw.github.io/chessfly/)** · no install, no server, no GPU
 
 The mushroom body is the part of an insect brain that learns which smells mean sugar and which mean danger. ChessFly takes the input wiring of a real one: all **285 olfactory projection neurons, 5,177 Kenyon cells and the 21,509 connections between them** in the FlyWire whole-brain connectome of an adult female *Drosophila* (release v783, reconstructed from electron microscopy by machine learning and proofread by the FlyWire consortium). Here the "smells" are chess pieces. The model gets no chess knowledge at all: nobody tells it that a queen is worth more than a pawn, that the centre matters, or which openings are good. It knows the rules and gets a dopamine signal after every game saying how things turned out.
 
 - After **50 games** the real-wired fly beats a player that always grabs the biggest capture, 69% of the time; after 200 games, 94%.
 - By **5,000 games** its own price list reads knight 3.1, bishop 3.9, rook 5.4, queen 11.0 pawns. Nobody told it; chess books say 3, 3, 5 and 9.
 - As an **adult** (10,000 games) it scores 61% against Counter, an engine that counts material with the same look-ahead. Let it look three moves ahead and it scores 88% against Sentinel, which counts material two moves ahead.
+- **Give it time to think** and the same adult brain plays at about **1950 Elo on Stockfish's scale** (1 second a move): a proper search engine now does the looking ahead, and the gut feeling still does all the judging. [How strong is it?](#how-strong-is-it)
 - **Real wiring vs random wiring:** the real FlyWire wiring learns chess exactly as well as the same cells with their inputs shuffled, and a little worse than the original random design. [Details below.](#real-wiring-vs-random-wiring)
 
-You can play against it, watch two flies play each other, or hatch your own fly and raise it from an egg while you watch its Kenyon cells light up.
+You can play against it, watch two flies play each other, hatch your own fly and raise it from an egg while you watch its Kenyon cells light up, or ignore the rules altogether in the sandbox and see how it takes that.
 
-## Three ways to use it, in 2D or 3D
+## Four ways to use it
 
 | | |
 |---|---|
-| **Play the fly** | Pick a fly (a hatchling, a larva, a pupa, the adult, the random-wired adult, or your own) and play it. It shows the moves it was weighing as arrows. Your own fly learns from every game you finish against it. |
+| **Play the fly** | Pick a fly (a hatchling, a larva, a pupa, the adult, the random-wired adult, or your own) and how long it may think: *Instinct*, 0.3 s, 1 s or 3 s a move. It shows the moves it was weighing as arrows. Your own fly learns from every game you finish against it. |
 | **Fly vs fly** | Put any two flies in the ring. By default it is the real-wired adult against the random-wired one. White-eyed flies play White (the famous *w*<sup>1118</sup> lab mutant), red-eyed wild types play Black. The fly flies over, picks up a piece and carries it to its square. Checkmate earns a *six-seven* 🤲 victory dance. |
 | **Raise your fly** | Self-play training in a Web Worker: about ten games a second while it is young, a few a second once it is an adult and thinks further ahead. Watch it go egg → larva → pupa → adult, watch its piece values appear, and watch its strength climb on the exam chart. You choose whether the egg gets real FlyWire wiring or random wiring. Its brain is saved in your browser; you can export it as a small JSON file and load it anywhere. |
+| **Sandbox** | No rules. Move any piece anywhere, take pieces off the board, flick them across the room, conjure extra queens. The fly notices: it complains about illegal moves, takes back pieces you steal, ducks when you throw things at it (and gets dizzy when you hit it), and its gut feeling, the real output neuron, is re-read after everything you do. Push it far enough and it starts breaking the rules too. (Works in 2D and 3D; in 3D the pieces really fly, bounce and end up lying on the table.) |
 
 **2D or 3D.** The switch in the header swaps the flat board for a three.js scene with turned wooden-style pieces and a 3D fly that flies over, grips a piece and carries it. In 3D the brain panel shows the mushroom body in 3D too: every Kenyon cell body at the position where it sits in the real FlyWire brain, the projection neurons that feed them, and the real connections lighting up for the position on the board. Drag to turn the board or the brain.
+
+<p align="center"><img src="docs/sandbox.gif" width="860" alt="The sandbox: an illegal knight move, a stolen queen and a rook thrown at the fly; the fly complains, ducks and gets angry, and its gut feeling drops"></p>
+
+<p align="center"><img src="docs/sandbox3d.png" width="420" alt="The 3D sandbox: a rook thrown at the fly hits it; the fly shouts OW! Right in the compound eyes!"></p>
 
 <p align="center"><img src="docs/demo.gif" width="860" alt="The 2D view: two flies playing, arrows show the moves the fly considered, the brain panel shows which inputs and Kenyon cells are active"></p>
 
@@ -38,7 +44,7 @@ flowchart LR
   PN -- "21,509 real connections<br/>≥ 5 synapses each" --> KC["5,177 Kenyon cells<br/>(FlyWire)<br/>fire when ≥ 2 inputs are on"]
   KC -- "plastic synapses" --> MBON(("1 output neuron<br/>'gut feeling'<br/>−1 … +1"))
   CH -. "shortcut" .-> MBON
-  MBON --> S["Tiny look-ahead<br/>1–3 moves + captures"] --> M["Move"]
+  MBON --> S["Look-ahead<br/>instinct, or 0.3–3 s of search"] --> M["Move"]
   R["Game result"] --> DAN(("Dopamine<br/>neurons"))
   DAN -- "prediction error<br/>rewires" --> KC
 ```
@@ -53,7 +59,7 @@ flowchart LR
 
 **Dopamine.** Learning happens only at the Kenyon cell → output synapses, as in the insect mushroom body, where dopamine neurons change exactly these synapses (Aso et al. 2014; Hige et al. 2015). After each game ChessFly walks back through every position of it and nudges each one's value toward what actually happened next, using temporal-difference learning, TD(λ) with λ = 0.7, the method behind TD-Gammon (Tesauro 1995). The "dopamine" is the prediction error: *better than I expected* strengthens the synapses of the cells that were active, *worse than expected* weakens them. Only the synapses of cells that were firing change.
 
-**The search.** Pure instinct cannot see that a piece is about to be taken, so the fly also looks a little ahead: a plain alpha-beta search 1 to 3 moves deep, plus captures until things calm down. It is ordinary engine code with no chess knowledge in it, so the fly's strength comes from the quality of its gut feeling. Young flies practise with 1 move of look-ahead; from adulthood (3,000 games) they practise with 2, which makes their games, and so their lessons, better.
+**The search.** Pure instinct cannot see that a piece is about to be taken, so the fly also looks ahead. While it learns, it looks just one move ahead plus captures (two once it is an adult): that is *Instinct* in the game. When you play it with a clock, it thinks the way a chess engine does: iterative deepening, a transposition table, principal-variation search, killer and history move ordering, check extensions and a quiescence search, typically 5 to 8 moves deep in a second. None of this knows anything about chess: the only judge of every position it reaches is still the output neuron, so the fly's strength comes from the quality of its gut feeling, multiplied by how far it can look.
 
 **Rewards.** A win is +1, a loss −1, a draw 0. While training, games that reach 200 moves without a result are stopped and scored by material. That is the only place material values appear in the whole program, and it is what gives an egg its very first hint.
 
@@ -141,31 +147,37 @@ Win rates count a draw as half a win.
 
 The order and the ratios settle early; the scale drifts upward later (by 10,000 games it rates a pawn lower than books do, so every piece looks "more expensive"), but a rook stays worth about two knights and a queen about two rooks. At 200 games it still thought a bishop was worth less than a knight.
 
-**Look-ahead.** The same adult brain gets much stronger when it thinks further ahead:
+## How strong is it?
 
-| Look-ahead | vs Counter | vs Sentinel | Rating |
-|---|---:|---:|---:|
-| 1 move (the exam setting) | 61% (+38 =46 −16) | 18% (+8 =20 −72) | 1690 |
-| 2 moves | 99% (+39 =1 −0) | 46% (+16 =5 −19) | ≈ 2035 |
-| 3 moves | 100% (+20 =0 −0) | 88% (+16 =3 −1) | ≈ 2380 |
+The ChessFly scale above is the fly's own yardstick. To put the adult on a scale people know, it played Stockfish 19 (the npm `stockfish` build, lite network), held back with Stockfish's own `UCI_Elo` setting and given 0.1 s a move (`node tools/arena.mjs`). Colours alternate; a draw counts half.
 
-Ratings above Sentinel's are extrapolated from lopsided scores and should be read as "clearly stronger than every exam opponent", nothing more precise. In *Play the fly* you choose how far it looks; in *Fly vs fly* the flies look two moves ahead.
+| How the adult plays | Result | ≈ Elo (Stockfish scale) |
+|---|---|---:|
+| *Instinct*: 1 move + captures (how it trains and sits exams) | vs Stockfish 1320: 20% (+4 −16) | ≈ 1080 |
+| Thinks 0.3 s a move | vs 1600: 65% (+13 −7) · vs 1700: 40% (+8 −12) · vs 1800: 20% (+4 −16) | ≈ 1640 |
+| Thinks 1 s a move | vs 1800: 55% (+11 −9) · vs 2000: 60% (+12 −8) | ≈ 1960 |
+| Thinks 3 s a move | vs 2000: 53% (+8 =1 −7) | ≈ 2020 |
+
+Give the same brain more time and it gets stronger, because it sees further, not because it knows more: the gut feeling is identical at every level. Against its own old fixed look-ahead, thinking 0.3 s a move scored 20 out of 20 against two moves ahead and 18 out of 20 against three moves ahead (+17 =2 −1).
+
+Treat these as rough: 20 games give about ±120 Elo of luck either way (the 3 s row is 16 games), and Stockfish's limited-strength levels are calibrated at longer time controls than 0.1 s a move. In *Fly vs fly* the flies think 0.25 s a move.
 
 ## Honest notes
 
 - **Real wiring, toy brain.** The projection neuron → Kenyon cell wiring is real: every connection comes from FlyWire. Everything after it is a model. A real mushroom body has about 35 output neurons of 21 types and some 20 types of dopamine neuron, arranged in 15 compartments; ChessFly has one output neuron and one dopamine signal. Real projection neurons carry smells; here chess squares are assigned to them at random.
 - **Both mushroom bodies at once.** FlyWire's 5,177 Kenyon cells are the left and right mushroom bodies together; ChessFly treats them as one pool.
 - **The shortcut.** The input channels also connect straight to the output neuron. Real projection neurons do not synapse on mushroom body output neurons; this path lets the egg learn piece values much faster, and it is the same in all three wirings.
-- **The search is not a fly.** No insect looks three moves ahead. The look-ahead is standard engine code; everything it knows, it gets from the output neuron.
+- **The search is not a fly.** No insect looks eight moves ahead. The look-ahead is standard engine code; everything it knows about chess positions, it gets from the output neuron. That is also why it plays best with a clock: the search makes up for what its single output neuron cannot see.
+- **The sandbox fly is part puppet.** Its words, its anger meter and its tantrums are scripted reactions to what you do. The gut feeling it shows is not: that is the real output neuron re-reading the board after every change, which is why stealing its queen makes it miserable and a gift of three queens does not. Its replies are its normal thinking (0.3 s), from whatever position you leave it in.
 - **Scores are noisy.** Each regular exam is 160 games, so single points on the charts move by ±60 rating points from luck alone.
-- **Sibling project.** [FLY67](https://github.com/znatgost/fly67) runs the *whole* FlyWire brain (138,639 neurons) as a spiking model driving a virtual fly.
+- **Sibling project.** [FLY67](https://github.com/gexhaw/fly67) runs the *whole* FlyWire brain (138,639 neurons) as a spiking model driving a virtual fly.
 
 ## Run it yourself
 
 It is plain HTML and JavaScript modules with no build step.
 
 ```sh
-git clone https://github.com/znatgost/chessfly && cd chessfly
+git clone https://github.com/gexhaw/chessfly && cd chessfly
 python3 -m http.server 8000        # then open http://localhost:8000
 ```
 
@@ -175,11 +187,12 @@ Opening `index.html` directly from disk will not work, because browsers block mo
 npm test                                   # perft, brain tests, and a real-wired egg that learns from scratch
 node tools/train.mjs --wiring flywire --games 10000 --out brains --tag myfly --exams 0,100,1000,5000,10000
 node tools/compare.mjs 100 brains/adult.json brains/adult-shuffled.json brains/adult-random.json
+npm i --no-save stockfish && node tools/arena.mjs fly:adult:t1000 sf:1800 20   # the adult, 1 s a move, vs Stockfish at 1800
 npm run build-data                         # re-extract data/mushroom_body.json from FlyWire (~200 MB download)
 npm run build-three                        # rebuild the trimmed three.js bundle in src/vendor
 ```
 
-The GitHub Actions workflow runs the move generator against the standard perft positions, checks the incremental evaluation against a full one at 176,000 search nodes for all three wirings, checks the FlyWire wiring against the data file, and hatches fresh eggs on every push (real and random wiring) to check that 1,000 self-play games are enough for them to value pieces in the right order and beat Random and Greedy.
+The GitHub Actions workflow runs the move generator against the standard perft positions, checks the incremental evaluation against a full one at 176,000 search nodes for all three wirings, checks the FlyWire wiring against the data file, checks that the clocked search finds mates and survives being interrupted, and hatches fresh eggs on every push (real and random wiring) to check that 1,000 self-play games are enough for them to value pieces in the right order and beat Random and Greedy.
 
 **Publishing on GitHub Pages:** push the repository, then in *Settings → Pages* choose *Deploy from a branch*, branch `main`, folder `/ (root)`.
 
@@ -190,7 +203,9 @@ index.html                  the page
 data/mushroom_body.json     the real wiring: 285 PNs, 5,177 KCs, 21,509 connections, cell types, soma positions
 src/chess.js                rules: 0x88 board, legal moves, draws, FEN, SAN (perft-verified)
 src/brain.js                the mushroom body: real / shuffled / random wiring, dopamine learning, incremental evaluation
-src/search.js               alpha-beta + quiescence look-ahead on top of the fly's gut feeling
+src/search.js               instinct: a fixed 1–2 move look-ahead + captures (used for learning and exams)
+src/think.js                thinking with a clock: iterative deepening, transposition table, PVS (used in play)
+src/sandbox.js              the no-rules sandbox and the fly's reactions
 src/training.js             self-play, TD(λ) learning, exams, Elo estimate
 src/players.js              the fly and the four exam opponents
 src/insight.js              asks a brain what it thinks each piece is worth
@@ -198,11 +213,11 @@ src/worker.js               runs thinking and training off the main thread
 src/app.js                  the interface
 src/board.js, board3d.js    the 2D (SVG) and 3D (three.js) boards, with the fly that carries the pieces
 src/brainview.js, brain3d.js  the live brain panel in 2D and 3D
-src/fly.js, pieces.js       the fly and the chess pieces, drawn for this project
+src/fly.js, pieces.js       the fly and the 2D chess pieces, drawn for this project
 src/vendor/three.js         three.js r186, trimmed to the parts used (tools/build_three.sh)
 brains/                     the shipped flies: larva, pupa, adult (real wiring), plus the shuffled and random-wired adults (about 30 KB each, exam history included)
-tools/                      FlyWire extraction, training, comparison, calibration, charts, GIF capture
-test/                       perft, brain and learning tests
+tools/                      FlyWire extraction, training, comparison, calibration, matches vs Stockfish, charts, GIF capture
+test/                       perft, brain, search and learning tests
 ```
 
 ## Data and references
@@ -221,4 +236,4 @@ The wiring in `data/mushroom_body.json` is derived from the FlyWire connectome, 
 
 ## License
 
-MIT for the code, the chess pieces and the fly. three.js is MIT. The fonts in `src/fonts` are under the SIL Open Font License. The FlyWire-derived data follows FlyWire's own terms.
+MIT for the code and the fly. The 2D chess piece set is the author's own artwork. three.js is MIT. The fonts in `src/fonts` are under the SIL Open Font License. The FlyWire-derived data follows FlyWire's own terms.

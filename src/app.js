@@ -4,6 +4,7 @@ import { BrainView } from './brainview.js';
 import { setAnatomy } from './brain.js';
 import { drawCurve } from './chart.js';
 import { flyMarkup } from './fly.js';
+import { Sandbox } from './sandbox.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -74,7 +75,7 @@ let training = false;
 let focusId = 'mine';
 
 const settings = {
-  playOpp: 'mine', playColor: 'w', depth: 1, arrows: true,
+  playOpp: 'mine', playColor: 'w', think: 300, arrows: true, sbOpp: 'adult',
   watchW: 'adult', watchB: 'adultRandom', speed: 1, loop: true,
 };
 
@@ -89,17 +90,30 @@ function seg(id, key, cast = (v) => v, after = null) {
   });
 }
 seg('#play-color', 'playColor');
-seg('#play-depth', 'depth', Number, () => { if (mode === 'play' && game) for (const p of [game.white, game.black]) if (p.type === 'fly') p.depth = settings.depth; });
+// How long the fly thinks per move, and roughly how strong that makes the adult (see README).
+const LEVELS = {
+  0: 'Instinct: gut feeling plus one move of look-ahead, the way it trains. Adult ≈ 1100 Elo.',
+  300: 'Thinks 0.3 s a move, searching several moves deep. Adult ≈ 1650 Elo.',
+  1000: 'Thinks 1 s a move. Adult ≈ 1950 Elo.',
+  3000: 'Thinks 3 s a move. Adult ≈ 2000 Elo.',
+};
+const thinkHint = () => { $('#think-hint').textContent = LEVELS[settings.think] || ''; };
+seg('#play-think', 'think', Number, () => { thinkHint(); if (mode === 'play' && game) for (const p of [game.white, game.black]) if (p.type === 'fly') p.think = settings.think; });
+thinkHint();
 seg('#watch-speed', 'speed', Number);
 $('#show-arrows').addEventListener('change', (e) => { settings.arrows = e.target.checked; if (!e.target.checked) board.arrows([]); });
 $('#watch-loop').addEventListener('change', (e) => { settings.loop = e.target.checked; });
 
 function fillSelects() {
-  for (const [sel, key] of [['#play-opp', 'playOpp'], ['#watch-w', 'watchW'], ['#watch-b', 'watchB']]) {
+  for (const [sel, key] of [['#play-opp', 'playOpp'], ['#watch-w', 'watchW'], ['#watch-b', 'watchB'], ['#sb-opp', 'sbOpp']]) {
     const s = $(sel);
     s.innerHTML = Object.keys(FLIES).filter((id) => infos[id]).map((id) => `<option value="${id}">${optLabel(id)}</option>`).join('');
     s.value = settings[key];
-    s.onchange = () => { settings[key] = s.value; if (key === 'playOpp' && mode === 'play') startPlay(); };
+    s.onchange = () => {
+      settings[key] = s.value;
+      if (key === 'playOpp' && mode === 'play') startPlay();
+      if (key === 'sbOpp') { sandbox.flyId = s.value; if (mode === 'free') { updateFocus(s.value); sandbox.value = null; sandbox.feel(true); renderSeats(); } }
+    };
   }
 }
 
@@ -125,10 +139,12 @@ function renderSeats() {
 }
 const status = (t) => { $('#status').textContent = t; };
 function renderMoves() {
+  if (game.sandbox) return renderLog(sandbox.log);
   const s = game.sans;
   let h = '';
   for (let i = 0; i < s.length; i += 2) h += `<li>${s[i]}${s[i + 1] ? ' ' + s[i + 1] : ''}</li>`;
   const el = $('#moves');
+  el.classList.remove('log');
   el.innerHTML = h;
   el.scrollTop = el.scrollHeight;
 }
@@ -174,7 +190,7 @@ let lookBusy = false, lookAgain = false;
 async function look(fen = null, moves = null) {
   if (lookBusy) { lookAgain = true; return; }
   const i = infos[focusId];
-  if (!i) return;
+  if (!i || (game && game.sandbox && !fen)) return;
   lookBusy = true;
   try {
     let as = null;
@@ -244,7 +260,7 @@ async function tick(t) {
   }
   status(`${FLIES[p.id].label} is thinking…`);
   const started = performance.now();
-  const r = await rpc({ type: 'think', id: p.id, fen: game.fen0, moves: game.moves, depth: p.depth || 1, temperature: 0 });
+  const r = await rpc({ type: 'think', id: p.id, fen: game.fen0, moves: game.moves, depth: 1, timeMs: p.think || 0, temperature: 0 });
   if (t !== token) return;
   const minWait = mode === 'watch' ? (settings.speed ? 240 / settings.speed : 30) : 380;
   const wait = minWait - (performance.now() - started);
@@ -334,6 +350,7 @@ async function endGame(st, resigned = null) {
 function setMode(m) {
   if (m === mode) return;
   if (training) toggleTraining(false);
+  if (mode === 'free') sandbox.leave();
   mode = m;
   document.body.dataset.mode = m;
   for (const b of $$('.modes button')) b.setAttribute('aria-selected', String(b.dataset.mode === m));
@@ -342,6 +359,7 @@ function setMode(m) {
   if (m === 'play') startPlay();
   if (m === 'watch') { watchPaused = true; showWatchIdle(); }
   if (m === 'train') showTrainIdle();
+  if (m === 'free') startSandbox();
 }
 $('.modes').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
 
@@ -349,7 +367,7 @@ $('.modes').addEventListener('click', (e) => { const b = e.target.closest('butto
 function startPlay() {
   let c = settings.playColor;
   if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
-  const fly = { type: 'fly', id: settings.playOpp, depth: settings.depth };
+  const fly = { type: 'fly', id: settings.playOpp, think: settings.think };
   const me = { type: 'human' };
   board.setFlipped(c === 'b');
   updateFocus(settings.playOpp);
@@ -409,12 +427,55 @@ function startWatch(next = false) {
   watchPaused = false;
   if (!next) { series.w = series.b = series.d = 0; }
   renderSeries();
-  const w = { type: 'fly', id: settings.watchW, depth: 2 }, b = { type: 'fly', id: settings.watchB, depth: 2 };
+  const w = { type: 'fly', id: settings.watchW, think: 250 }, b = { type: 'fly', id: settings.watchB, think: 250 };
   updateFocus(settings.watchW);
   newGame(w, b);
 }
 $('#watch-start').onclick = () => { if (mode !== 'watch') setMode('watch'); startWatch(false); };
 $('#watch-pause').onclick = () => { watchPaused = true; token++; status('Paused.'); };
+
+
+// sandbox
+const T12 = ['wk', 'wq', 'wr', 'wb', 'wn', 'wp', 'bk', 'bq', 'br', 'bb', 'bn', 'bp'];
+const CODE = { p: 1, n: 2, b: 3, r: 4, q: 5, k: 6 };
+$('#sb-tray').innerHTML = T12.map((id) => `<button data-p="${(id[0] === 'b' ? 8 : 0) | CODE[id[1]]}" aria-pressed="false" title="${id[0] === 'w' ? 'White' : 'Black'} ${({ k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' })[id[1]]}"><svg viewBox="0 0 45 45"><use href="#piece-${id}"/></svg></button>`).join('');
+function renderLog(log) {
+  const el = $('#moves');
+  el.innerHTML = log.map((t) => `<li class="ev ${t.startsWith('Fly') ? 'fly' : ''}">${t}</li>`).join('');
+  el.classList.add('log');
+  el.scrollTop = el.scrollHeight;
+}
+const sandbox = new Sandbox({
+  board: () => board, rpc, scope, $, $$, infos, FLIES, status, renderLog,
+  focus: (id) => updateFocus(id),
+});
+function startSandbox() {
+  token++;
+  banner(null);
+  board.setInput(null, null);
+  sandbox.flyId = infos[settings.sbOpp] ? settings.sbOpp : 'mine';
+  const fly = { type: 'fly', id: sandbox.flyId }, me = { type: 'human' };
+  game = { fen0: START_FEN, pos: new Position(), moves: [], sans: [], white: sandbox.flyColor === 'w' ? fly : me, black: sandbox.flyColor === 'w' ? me : fly, over: null, idle: true, sandbox: true };
+  status('Your move. Or do whatever you like.');
+  sandbox.enter();
+  renderSeats();
+}
+$('#sb-tray').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  sandbox.setPlacing(sandbox.placing === +b.dataset.p ? 0 : +b.dataset.p);
+});
+seg('#sb-color', 'sbColor', String, () => { sandbox.flyColor = settings.sbColor; sandbox.reset(); if (mode === 'free') startSandbox(); });
+$('#sb-reply').onchange = (e) => { sandbox.reply = e.target.checked; };
+$('#sb-reset').onclick = () => { if (mode !== 'free') setMode('free'); else { sandbox.reset(); startSandbox(); } };
+$('#sb-clear').onclick = () => {
+  if (mode !== 'free') setMode('free');
+  sandbox.reset();
+  sandbox.arr.fill(0);
+  sandbox.arr[4] = 6; sandbox.arr[60] = 14;
+  startSandbox();
+};
+$('#sb-go').onclick = () => { if (mode === 'free' && !sandbox.busy) { sandbox.turn = sandbox.flyColor; sandbox.act({ type: 'pass' }); } };
 
 // train
 function lifeHTML(i) {
@@ -551,6 +612,7 @@ async function setView(v) {
   view = v;
   try { localStorage.setItem('chessfly.view', v); } catch { /* ignore */ }
   for (const b of $$('#view button')) b.setAttribute('aria-pressed', String(b.dataset.v === v));
+  if (mode === 'free') sandbox.leave();
   const next = v === '3d' ? board3d : board2d;
   next.setFlipped(board.flipped);
   board = next;
@@ -569,13 +631,14 @@ async function setView(v) {
   $('#scope-readout').hidden = !(v === '3d' && scope3d);
   captionScope();
   board.removeFlies();
+  if (mode === 'free') { sandbox.enter(); renderSeats(); return; }
   if (game) {
     for (const [p, c] of [[game.white, 'w'], [game.black, 'b']]) if (p.type === 'fly') board.perch(board.addFly(c, c === 'w' ? 'white' : 'red'), c);
     drawGame();
     if (!game.over && mode !== 'train') { token++; tick(token); }
   } else board.draw(new Position(), null, -1);
 }
-window.chessfly = { get board() { return board; } }; // handy for scripted captures
+window.chessfly = { get board() { return board; }, sandbox }; // handy for scripted captures
 $('#view').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setView(b.dataset.v); });
 
 // ---------- boot ----------
@@ -601,7 +664,7 @@ async function boot() {
   if (!v0) try { v0 = localStorage.getItem('chessfly.view'); } catch { v0 = null; }
   if (v0 === '3d') await setView('3d');
   const want = params.get('mode');
-  if (want === 'watch' || want === 'train') { mode = 'play'; setMode(want); if (want === 'watch' && params.has('autostart')) startWatch(); }
+  if (want === 'watch' || want === 'train' || want === 'free') { mode = 'play'; setMode(want); if (want === 'watch' && params.has('autostart')) startWatch(); }
   else startPlay();
 }
 document.body.dataset.mode = 'play';

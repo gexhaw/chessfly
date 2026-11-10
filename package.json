@@ -5,9 +5,10 @@
   "type": "module",
   "private": true,
   "license": "MIT",
-  "author": "Ruben Nugmanov (znatgost)",
+  "author": "Ruben Nugmanov (gexhaw)",
   "scripts": {
-    "test": "node test/perft.mjs --quick && node test/brain.mjs && node test/learning.mjs",
+    "test": "node test/perft.mjs --quick && node test/brain.mjs && node test/think.mjs && node test/learning.mjs",
+    "arena": "node tools/arena.mjs",
     "perft": "node test/perft.mjs",
     "learning": "node test/learning.mjs",
     "train": "node tools/train.mjs",

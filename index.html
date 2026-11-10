@@ -12,12 +12,12 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="ChessFly: a fruit fly teaches itself chess">
   <meta property="og:description" content="A fruit fly's mushroom body, wired from the real FlyWire connectome, learns chess from nothing by playing itself. Play it in 2D or 3D in the browser.">
-  <meta property="og:url" content="https://znatgost.github.io/chessfly/">
-  <meta property="og:image" content="https://znatgost.github.io/chessfly/docs/og.png">
+  <meta property="og:url" content="https://gexhaw.github.io/chessfly/">
+  <meta property="og:image" content="https://gexhaw.github.io/chessfly/docs/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:site" content="@znatgost">
+  <meta name="twitter:site" content="@gexhaw">
   <link rel="stylesheet" href="src/fonts/fonts.css">
   <link rel="stylesheet" href="src/style.css">
 </head>
@@ -32,7 +32,7 @@
       <button data-v="2d" aria-pressed="true">2D</button>
       <button data-v="3d" aria-pressed="false">3D</button>
     </div>
-    <a class="gh" href="https://github.com/znatgost/chessfly">Source on GitHub</a>
+    <a class="gh" href="https://github.com/gexhaw/chessfly">Source on GitHub</a>
   </header>
 
   <main class="layout">
@@ -52,6 +52,7 @@
         <button role="tab" data-mode="play" aria-selected="true">Play the fly</button>
         <button role="tab" data-mode="watch" aria-selected="false">Fly vs fly</button>
         <button role="tab" data-mode="train" aria-selected="false">Raise your fly</button>
+        <button role="tab" data-mode="free" aria-selected="false">Sandbox</button>
       </div>
 
       <section class="panel" data-panel="play">
@@ -68,12 +69,14 @@
           </div>
         </div>
         <div class="field">
-          <span>The fly looks ahead</span>
-          <div class="seg" id="play-depth">
-            <button data-v="1" aria-pressed="true">1 move</button>
-            <button data-v="2" aria-pressed="false">2 moves</button>
-            <button data-v="3" aria-pressed="false">3 moves</button>
+          <span>How long it thinks</span>
+          <div class="seg" id="play-think">
+            <button data-v="0" aria-pressed="false">Instinct</button>
+            <button data-v="300" aria-pressed="true">0.3 s</button>
+            <button data-v="1000" aria-pressed="false">1 s</button>
+            <button data-v="3000" aria-pressed="false">3 s</button>
           </div>
+          <small class="hint" id="think-hint"></small>
         </div>
         <label class="check"><input type="checkbox" id="show-arrows" checked> Show the moves it considered</label>
         <div class="actions">
@@ -132,6 +135,37 @@
         </label>
       </section>
 
+      <section class="panel" data-panel="free" hidden>
+        <p class="lead">No rules here. Move any piece anywhere, even illegally. Drag a piece off the board to take it. <b>Flick</b> a piece to throw it (try aiming at the fly). Conjure new pieces from the tray. Then watch how the fly takes it.</p>
+        <div class="moodbox">
+          <div class="moodrow"><span>Mood</span><b id="sb-mood" class="mood calm">Calm</b><div class="anger" title="How annoyed it is"><i id="sb-anger"></i></div></div>
+          <div class="moodrow"><span>Gut feeling</span><div class="feel" title="The output neuron, −1 to +1, from the fly's side"><i id="sb-feel-bar"></i></div><b id="sb-feel" class="mono">+0.00</b></div>
+          <p class="note" id="sb-feel-note"></p>
+        </div>
+        <div class="field">
+          <span>Tray: pick a piece, then click a square</span>
+          <div class="tray" id="sb-tray"></div>
+        </div>
+        <label class="field">
+          <span>The fly</span>
+          <select id="sb-opp"></select>
+        </label>
+        <div class="field">
+          <span>It plays</span>
+          <div class="seg" id="sb-color">
+            <button data-v="b" aria-pressed="true">Black</button>
+            <button data-v="w" aria-pressed="false">White</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="sb-reply" checked> The fly answers back (moves after you)</label>
+        <div class="actions">
+          <button class="primary" id="sb-reset">Reset the board</button>
+          <button id="sb-clear">Empty board, kings only</button>
+          <button id="sb-go">Fly's turn</button>
+        </div>
+        <p class="note">Nothing here teaches the fly: its brain is only read, never changed. If it gets angry enough, it starts breaking the rules too.</p>
+      </section>
+
       <section class="scope" aria-label="Brain activity">
         <div class="scope-head">
           <h2>Inside its head</h2>
@@ -154,7 +188,7 @@
   </main>
 
   <footer class="foot">
-    <p>ChessFly is a toy model. The projection neuron to Kenyon cell wiring is the real one from the FlyWire connectome (v783) and the learning rule comes from the insect mushroom body, but the inputs are chess pieces, not smells, and a small search is bolted on. No real fly can play chess. <a href="https://github.com/znatgost/chessfly#how-it-works">How it works</a>.</p>
+    <p>ChessFly is a toy model. The projection neuron to Kenyon cell wiring is the real one from the FlyWire connectome (v783) and the learning rule comes from the insect mushroom body, but the inputs are chess pieces, not smells, and a small search is bolted on. No real fly can play chess. <a href="https://github.com/gexhaw/chessfly#how-it-works">How it works</a>.</p>
   </footer>
 
   <script type="module" src="src/app.js"></script>

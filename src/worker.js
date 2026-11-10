@@ -2,11 +2,14 @@
 import { Position, START_FEN } from './chess.js';
 import { Brain, stage, setAnatomy } from './brain.js';
 import { FlyPlayer } from './players.js';
+import { Thinker } from './think.js';
 import { learnFromGame, selfPlayGame, match, estimateElo, lifeRate } from './training.js';
 import { mulberry32 } from './util.js';
 import { pieceValues } from './insight.js';
 
 const brains = new Map();
+const thinkers = new Map(); // one per fly: its transposition table carries over from move to move
+const thinkerOf = (id) => { let t = thinkers.get(id); if (!t) thinkers.set(id, (t = new Thinker(brains.get(id)))); return t; };
 // the real FlyWire wiring, needed before any 'flywire' or 'shuffled' brain can be built
 const ready = fetch(new URL('../data/mushroom_body.json', import.meta.url)).then((r) => r.json()).then(setAnatomy).catch(() => {});
 const rnd = mulberry32((Date.now() ^ (Math.random() * 1e9)) >>> 0);
@@ -51,6 +54,7 @@ function exam(b, n = 10) {
 
 function trainLoop(id, opts) {
   const b = brains.get(id);
+  thinkers.get(id)?.clear();
   const token = {};
   training = { id, token };
   let lastPost = 0, lastSnap = 0, dop = 0, n = 0;
@@ -96,12 +100,18 @@ onmessage = async (e) => {
         const b = m.json ? Brain.fromJSON(m.json) : new Brain({ nKC: m.nKC || 4000, seed: m.seed || ((Math.random() * 1e9) | 0), name: m.name || 'fly', wiring: m.wiring || 'flywire' });
         if (m.name) b.name = m.name;
         brains.set(m.id, b);
+        thinkers.delete(m.id);
         post({ type: 'loaded', id: m.id, info: info(m.id), reqId: m.reqId });
         break;
       }
       case 'think': {
         const b = brains.get(m.id);
         const pos = replay(m.moves, m.fen);
+        if (m.timeMs) {
+          const r = thinkerOf(m.id).think(pos, { timeMs: m.timeMs, rnd });
+          post({ type: 'move', reqId: m.reqId, id: m.id, uci: pos.uci(r.move), score: r.score, depth: r.depth, nodes: r.nodes, ms: r.ms, top: r.top.map(([mv, sc]) => [pos.uci(mv), sc]) });
+          break;
+        }
         const fly = new FlyPlayer(b, { depth: m.depth || 1 });
         const { moves, scores } = fly.search.scoreRoot(pos);
         let best = -Infinity;
@@ -142,6 +152,7 @@ onmessage = async (e) => {
         const before = b.value(new Position(m.fen));
         // a game against a real opponent counts for as much as four games against itself
         const r = learnFromGame(b, { plies, result: m.result }, { lambda: 0.7, lr: m.lr || 4 * lifeRate(b.games) });
+        thinkers.get(m.id)?.clear();
         if (m.flyColor != null) {
           const s = m.flyColor === 'w' ? m.result : -m.result;
           if (s > 0) b.record.w++; else if (s < 0) b.record.l++; else b.record.d++;

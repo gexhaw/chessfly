@@ -238,3 +238,65 @@ body[data-mode="train"] .scope { order: 3; }
 @keyframes pop3d { from { transform: translateX(-50%) scale(.4); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
 .brain3d { display: none; width: 100%; border-radius: 6px; cursor: grab; touch-action: none; }
 .scope-readout { margin: 8px 0 0; font: 13px/1.45 "IBM Plex Mono", monospace; color: #ece0c8; }
+
+/* ---------- sandbox ---------- */
+.hint { color: var(--muted); font-size: 13px; }
+.lead { margin: 0; font-size: 15px; max-width: 62ch; }
+.moves.log { display: block; max-height: 150px; font-size: 13px; }
+.moves.log li { white-space: normal; }
+.moves.log li::before { content: none; }
+.moves.log li.fly { color: var(--accent); }
+.moodbox { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 12px 14px; display: grid; gap: 10px; background: var(--panel); }
+.moodrow { display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+.moodrow > span { font-weight: 700; }
+.moodrow:first-child { grid-template-columns: 96px auto 1fr; }
+.mood { font: 800 18px "Bricolage Grotesque", sans-serif; color: var(--ink); transition: color .3s; }
+.mood.happy { color: #2f8a4c; } .mood.worried { color: #6f6aa8; } .mood.puzzled { color: var(--food); }
+.mood.annoyed { color: #d9762b; } .mood.angry, .mood.furious { color: var(--accent); }
+.mood.furious { animation: shake .18s linear infinite; display: inline-block; }
+.anger { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.anger i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--food), var(--accent)); transition: width .4s; }
+.feel { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #b5485a, var(--line) 50%, #3d9a5c); }
+.feel i { position: absolute; top: -4px; width: 4px; height: 16px; border-radius: 2px; background: var(--ink); left: 50%; transform: translateX(-50%); transition: left .5s cubic-bezier(.2, 1.3, .4, 1); }
+.mono { font-family: "IBM Plex Mono", monospace; color: var(--ink); }
+.tray { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; max-width: 360px; }
+.tray button { padding: 3px; aspect-ratio: 1; display: grid; place-items: center; }
+.tray button svg { width: 100%; height: 100%; }
+.tray button[aria-pressed="true"] { background: var(--food); border-color: var(--ink); }
+#board.free .piece { cursor: grab; }
+.piece.thrown { filter: url(#lift); }
+.bubble rect, .bubble-tail { fill: #fffdf6; stroke: #1d1b20; stroke-width: 3; }
+.bubble-tail { stroke-linejoin: round; }
+.bubble text { font: 700 26px "Atkinson Hyperlegible", sans-serif; fill: #1d1b20; }
+.bubble { animation: bubble-in .25s cubic-bezier(.2, 1.5, .4, 1) both; transform-box: fill-box; transform-origin: 50% 100%; }
+.bubble.out { opacity: 0; transition: opacity .3s; }
+.bubble.angry rect, .bubble.furious rect, .bubble.angry .bubble-tail, .bubble.furious .bubble-tail { fill: #ffe7e4; stroke: var(--accent); }
+.bubble.furious text { fill: #a3141f; font-weight: 800; }
+.bubble.happy rect, .bubble.happy .bubble-tail { fill: #eaf7ea; }
+.bubble.worried rect, .bubble.worried .bubble-tail { fill: #eeedf8; }
+@keyframes bubble-in { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.fly.angry .fly-body { animation: shake .09s linear infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+.fly.angry .wing-r { animation: buzz-r 30ms linear infinite alternate; }
+.fly.angry .wing-l { animation: buzz-l 30ms linear infinite alternate; }
+.fly.angry .eyes { filter: brightness(1.5) saturate(2) drop-shadow(0 0 3px #ff2a2a); }
+.fly.dizzy .fly-body { animation: spin .5s linear infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+@keyframes shake { 0% { transform: translate(-2px, 0) rotate(-3deg); } 50% { transform: translate(2px, 1px) rotate(3deg); } 100% { transform: translate(-2px, 0) rotate(-3deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+.stars .star { font-size: 26px; fill: var(--food); stroke: var(--frame); stroke-width: 2; paint-order: stroke; animation: orbit 0.9s linear infinite; transform-origin: 0 0; }
+.stars .s1 { animation-delay: -.3s; } .stars .s2 { animation-delay: -.6s; }
+@keyframes orbit { from { transform: rotate(0deg) translateX(42px) rotate(0deg); } to { transform: rotate(360deg) translateX(42px) rotate(-360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .fly.angry .fly-body, .fly.dizzy .fly-body, .mood.furious, .stars .star { animation: none; }
+}
+.bubble3d {
+  position: absolute; transform: translate(-50%, -100%); pointer-events: none; z-index: 3;
+  background: #fffdf6; color: #1d1b20; border: 3px solid #1d1b20; border-radius: 18px; padding: 8px 16px;
+  font: 700 17px "Atkinson Hyperlegible", sans-serif; white-space: nowrap; max-width: 92%;
+  animation: bubble3d-in .25s cubic-bezier(.2, 1.5, .4, 1) both;
+}
+.bubble3d::after { content: ""; position: absolute; left: 50%; bottom: -11px; width: 16px; height: 16px; background: inherit; border: inherit; border-width: 0 3px 3px 0; transform: translateX(-50%) rotate(45deg); }
+.bubble3d.out { opacity: 0; transition: opacity .3s; }
+.bubble3d.angry, .bubble3d.furious { background: #ffe7e4; border-color: var(--accent); }
+.bubble3d.furious { color: #a3141f; font-weight: 800; }
+.bubble3d.happy { background: #eaf7ea; } .bubble3d.worried { background: #eeedf8; }
+@keyframes bubble3d-in { from { transform: translate(-50%, -100%) scale(.5); opacity: 0; } to { transform: translate(-50%, -100%) scale(1); opacity: 1; } }
